@@ -6,6 +6,17 @@ import { diskStorage } from 'multer';
 import path from 'path';
 
 @Module({
+  imports: [
+    MulterModule.register({
+      storage: diskStorage({
+        destination: path.join(__dirname, '..', '..', 'files'),
+        filename: (req, file, cb) => {
+          const filename: string = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.originalname}`;
+          cb(null, filename);
+        },
+      }),
+    }),
+  ],
   providers: [UploadService],
   controllers: [UploadController],
 })

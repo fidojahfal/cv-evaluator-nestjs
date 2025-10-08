@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EvaluateService } from './evaluate.service';
 import { EvaluateController } from './evaluate.controller';
 import { BullModule } from '@nestjs/bullmq';
+import { EvaluateProcessor } from './evaluate.processor';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { BullModule } from '@nestjs/bullmq';
       },
     }),
   ],
-  providers: [EvaluateService],
+  providers: [EvaluateService, EvaluateProcessor],
   controllers: [EvaluateController],
 })
 export class EvaluateModule {}

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { HuggingFaceInference } from '@langchain/community/llms/hf';
+import { ChatGroq } from '@langchain/groq';
 import { HuggingFaceInferenceEmbeddings } from '@langchain/community/embeddings/hf';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { ChromaClient } from 'chromadb';
@@ -7,6 +7,7 @@ import { JobRequestData } from '../model/processor.model';
 import { promises as fs } from 'fs';
 import pdf from 'pdf-parse';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ingestDocs } from '../common/scripts/ingest-documents';
 
 @Processor('evaluation')
 export class EvaluateProcessor extends WorkerHost {
@@ -14,11 +15,10 @@ export class EvaluateProcessor extends WorkerHost {
     host: process.env.CHROMA_DB_HOST,
     port: +process.env.CHROMA_DB_PORT! || 8000,
   });
-  private llm = new HuggingFaceInference({
-    model: 'meta-llama/Llama-3-8B-Instruct',
-    apiKey: process.env.HF_API_KEY,
+  private llm = new ChatGroq({
+    model: 'gemma2-9b-it',
+    apiKey: process.env.GROQ_API_KEY,
     temperature: 0.3,
-    maxTokens: 1024,
   });
 
   private embeddings = new HuggingFaceInferenceEmbeddings({
@@ -102,11 +102,19 @@ Respond ONLY in strict JSON format:
 }
       `;
 
-      const cvResponse = await this.llm.invoke(cvPrompt);
+      const cvResponse = await this.llm
+        .withConfig({ response_format: { type: 'json_object' } })
+        .invoke([
+          {
+            role: 'user',
+            content: cvPrompt,
+          },
+        ]);
 
+      const cvTextOutput: string = cvResponse.content as string;
       let cvResult;
       try {
-        cvResult = JSON.parse(cvResponse);
+        cvResult = JSON.parse(cvTextOutput);
       } catch {
         cvResult = {
           cv_match_rate: 0,
@@ -132,11 +140,15 @@ Respond ONLY in strict JSON format:
 }
   `;
 
-      const projectResponse = await this.llm.invoke(projectPrompt);
+      const projectResponse = await this.llm
+        .withConfig({ response_format: { type: 'json_object' } })
+        .invoke([{ role: 'user', content: projectPrompt }]);
+
+      const projectTextOutput: string = projectResponse.content as string;
 
       let projectResult;
       try {
-        projectResult = JSON.parse(projectResponse);
+        projectResult = JSON.parse(projectTextOutput);
       } catch {
         projectResult = {
           project_score: 0,
@@ -162,11 +174,20 @@ Respond in JSON:
 Be concise (under 5 sentences).
       `;
 
-      const finalResponse = await this.llm.invoke(finalPrompt);
+      const finalResponse = await this.llm
+        .withConfig({ response_format: { type: 'json_object' } })
+        .invoke([
+          {
+            role: 'user',
+            content: finalPrompt,
+          },
+        ]);
+
+      const finalTextOutput: string = finalResponse.content as string;
 
       let finalSummary;
       try {
-        finalSummary = JSON.parse(finalResponse);
+        finalSummary = JSON.parse(finalTextOutput);
       } catch {
         finalSummary = {
           overal_summary: 'Evaluation summary failed to parse.',
@@ -199,7 +220,11 @@ Be concise (under 5 sentences).
         },
         data: {
           status: 'failed',
-          result: { error: error.message },
+          result: {
+            error_message: error.message,
+            error_stack: error.stack,
+            error_details: JSON.stringify(error),
+          },
         },
       });
 

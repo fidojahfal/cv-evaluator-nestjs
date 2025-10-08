@@ -4,6 +4,7 @@ import { ChromaClient } from 'chromadb';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvaluteResponse, JobRequestData } from '../../model/processor.model';
 import { promises as fs } from 'fs';
+import { ProcessorEvaluteResponse } from '../../model/processor.model';
 
 @Processor('evaluation')
 export class EvaluateProcessor extends WorkerHost {
@@ -15,6 +16,10 @@ export class EvaluateProcessor extends WorkerHost {
     model: 'gpt-4o-mini',
     apiKey: process.env.OPEN_API_KEY,
     temperature: 0.2,
+  });
+
+  private embeddings = new OpenAIEmbeddings({
+    apiKey: process.env.OPEN_API_KEY,
   });
 
   constructor(private prismaService: PrismaService) {
@@ -38,10 +43,6 @@ export class EvaluateProcessor extends WorkerHost {
       const projectText = (await pdf(await fs.readFile(project_report.path)))
         .text;
 
-      const embeddings = new OpenAIEmbeddings({
-        apiKey: process.env.OPEN_API_KEY,
-      });
-
       const chromaCollection = await this.chromadb.createCollection({
         name: 'cv-evaluation',
       });
@@ -49,8 +50,8 @@ export class EvaluateProcessor extends WorkerHost {
       await chromaCollection.add({
         ids: ['cv', 'project_report'],
         embeddings: [
-          await embeddings.embedQuery(cvText),
-          await embeddings.embedQuery(projectText),
+          await this.embeddings.embedQuery(cvText),
+          await this.embeddings.embedQuery(projectText),
         ],
         metadatas: [
           {
@@ -64,53 +65,135 @@ export class EvaluateProcessor extends WorkerHost {
         ],
       });
 
-      const promptAi = `You are an AI evaluation assistant. Analyze the candidate's CV and project report below.
-Respond strictly in JSON format as shown.
+      const collection = await this.chromadb.getOrCreateCollection({
+        name: 'ground_truth_docs',
+      });
 
---- CV ---
+      const groundTruth = await collection.get({
+        ids: ['job_description', 'case_study_brief', 'scoring_rubric'],
+      });
+
+      const jobDescriptionText =
+        groundTruth.documents?.[0]?.[0] || 'No job description found!';
+      const caseStudyBriefText =
+        groundTruth.documents?.[1]?.[0] || 'No job description found!';
+      const scoringRubricText =
+        groundTruth.documents?.[2]?.[0] || 'No job description found!';
+
+      const cvPrompt = `You are an AI evaluator comparing a candidate's CV against a job description and a scoring rubric.
+
+--- Job Description ---
+${jobDescriptionText.slice(0, 4000)}
+
+--- CV Scoring Rubric ---
+${scoringRubricText.slice(0, 4000)}
+
+--- Candidate CV ---
 ${cvText.slice(0, 4000)}
 
---- PROJECT REPORT ---
-${projectText.slice(0, 4000)}
-
-Respond in JSON format:
+Respond ONLY in strict JSON format:
 {
   "cv_match_rate": number (0.0 - 1.0),
-  "cv_feedback": string,
-  "project_score": number (0.0 - 5.0),
-  "project_feedback": string,
-  "overall_summary": string
+  "cv_feedback": string
 }
-`;
+      `;
 
-      const response = await this.llm.invoke([
-        { role: 'user', content: promptAi },
+      const cvResponse = await this.llm.invoke([
+        { role: 'user', content: cvPrompt },
       ]);
 
-      let parsed: EvaluteResponse;
+      let cvResult;
       try {
-        parsed = JSON.parse(response.content);
-      } catch (e) {
-        parsed = {
+        cvResult = JSON.parse(cvResponse.content);
+      } catch {
+        cvResult = {
           cv_match_rate: 0,
-          cv_feedback: `Failed to parse AI output`,
-          project_score: 0,
-          project_feedback: `Invalid format`,
-          overall_summary: `Error occured during evaluation.`,
+          cv_feedback: 'Failed to parse CV evaluation response.',
         };
       }
 
-      const evaluation = await this.prismaService.evaluation.update({
+      const projectPrompt = `You are an AI evaluator reviewing a candidate's project report relative to the official case study and scoring rubric.
+
+--- Case Study Brief ---
+${caseStudyBriefText.slice(0, 4000)}
+
+--- Project Scoring Rubric ---
+${scoringRubricText.slice(0, 4000)}
+
+--- Candidate Project Report ---
+${projectText.slice(0, 4000)}
+
+Respond ONLY in strict JSON format:
+{
+  "project_score": number (0.0 - 5.0),
+  "project_feedback": string
+}
+  `;
+
+      const projectResponse = await this.llm.invoke([
+        { role: 'user', content: projectPrompt },
+      ]);
+
+      let projectResult;
+      try {
+        projectResult = JSON.parse(projectResponse.content);
+      } catch {
+        projectResult = {
+          project_score: 0,
+          project_feedback: 'Failed to parse project evaluation response.',
+        };
+      }
+
+      const finalPrompt = `
+You are a senior AI recruiter summarizing the candidate's readiness for the backend engineer role.
+
+Combine both evaluations:
+
+CV Evaluation:
+${JSON.stringify(cvResult)}
+
+Project Evaluation:
+${JSON.stringify(projectResult)}
+
+Respond in JSON:
+{
+  "overall_summary": string
+}
+Be concise (under 5 sentences).
+      `;
+
+      const finalResponse = await this.llm.invoke([
+        { role: 'user', content: finalPrompt },
+      ]);
+
+      let finalSummary;
+      try {
+        finalSummary = JSON.parse(finalResponse.content);
+      } catch {
+        finalSummary = {
+          overal_summary: 'Evaluation summary failed to parse.',
+        };
+      }
+
+      const evaluationResult: ProcessorEvaluteResponse = {
+        cv_match_rate: cvResult.cv_match_rate,
+        cv_feedback: cvResult.cv_feedback,
+        project_score: projectResult.project_score,
+        project_feedback: projectResult.project_feedback,
+        overall_summary: finalSummary.overall_summary,
+      };
+
+      await this.prismaService.evaluation.update({
         where: {
           id: evaluation_id,
         },
         data: {
           status: 'completed',
-          result: parsed,
+          result: evaluationResult,
         },
       });
 
-      return evaluation;
+      return evaluationResult;
     } catch (error) {
       await this.prismaService.evaluation.update({
         where: {

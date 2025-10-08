@@ -6,7 +6,7 @@ export class JobRequestData {
   project_report: File;
 }
 
-export class EvaluteResponse {
+export class ProcessorEvaluteResponse {
   cv_match_rate: number;
   cv_feedback: string;
   project_score: number;

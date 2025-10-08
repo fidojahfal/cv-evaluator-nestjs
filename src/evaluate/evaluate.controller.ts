@@ -1,4 +1,4 @@
-import { Body, Controller, ParseIntPipe } from '@nestjs/common';
+import { Body, Controller, HttpCode, ParseIntPipe, Post } from '@nestjs/common';
 import { EvaluateService } from './evaluate.service';
 import {
   EvaluateResponse,
@@ -9,6 +9,8 @@ import {
 export class EvaluateController {
   constructor(private evaluateService: EvaluateService) {}
 
+  @Post()
+  @HttpCode(200)
   async startEvaluate(
     @Body('job_title') job_title: string,
     @Body('cv_id', ParseIntPipe) cv_id: number,

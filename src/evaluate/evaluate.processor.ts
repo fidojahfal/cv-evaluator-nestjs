@@ -222,8 +222,6 @@ Be concise (under 5 sentences).
           status: 'failed',
           result: {
             error_message: error.message,
-            error_stack: error.stack,
-            error_details: JSON.stringify(error),
           },
         },
       });

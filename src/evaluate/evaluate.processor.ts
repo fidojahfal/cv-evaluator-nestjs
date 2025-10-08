@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
+import { HuggingFaceInference } from '@langchain/community/llms/hf';
+import { HuggingFaceInferenceEmbeddings } from '@langchain/community/embeddings/hf';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { ChromaClient } from 'chromadb';
 import { JobRequestData } from '../model/processor.model';
@@ -11,16 +12,18 @@ import { PrismaService } from '../common/prisma/prisma.service';
 export class EvaluateProcessor extends WorkerHost {
   private chromadb = new ChromaClient({
     host: process.env.CHROMA_DB_HOST,
-    port: +process.env.CHROMA_DB_PORT!,
+    port: +process.env.CHROMA_DB_PORT! || 8000,
   });
-  private llm = new ChatOpenAI({
-    model: 'gpt-4o-mini',
-    apiKey: process.env.OPEN_API_KEY,
-    temperature: 0.2,
+  private llm = new HuggingFaceInference({
+    model: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+    apiKey: process.env.HF_API_KEY,
+    temperature: 0.3,
+    maxTokens: 1024,
   });
 
-  private embeddings = new OpenAIEmbeddings({
-    apiKey: process.env.OPEN_API_KEY,
+  private embeddings = new HuggingFaceInferenceEmbeddings({
+    apiKey: process.env.HF_API_KEY,
+    model: 'sentence-transformers/all-MiniLM-L6-v2',
   });
 
   constructor(private prismaService: PrismaService) {
@@ -99,16 +102,11 @@ Respond ONLY in strict JSON format:
 }
       `;
 
-      const cvResponse = await this.llm.invoke([
-        { role: 'user', content: cvPrompt },
-      ]);
-      const cvTextOutput = Array.isArray(cvResponse.content)
-        ? cvResponse.content.map((c: any) => c.text).join('\n')
-        : cvResponse.content;
+      const cvResponse = await this.llm.invoke(cvPrompt);
 
       let cvResult;
       try {
-        cvResult = JSON.parse(cvTextOutput);
+        cvResult = JSON.parse(cvResponse);
       } catch {
         cvResult = {
           cv_match_rate: 0,
@@ -134,16 +132,11 @@ Respond ONLY in strict JSON format:
 }
   `;
 
-      const projectResponse = await this.llm.invoke([
-        { role: 'user', content: projectPrompt },
-      ]);
-      const projectTextOutput = Array.isArray(projectResponse.content)
-        ? projectResponse.content.map((c: any) => c.text).join('\n')
-        : projectResponse.content;
+      const projectResponse = await this.llm.invoke(projectPrompt);
 
       let projectResult;
       try {
-        projectResult = JSON.parse(projectTextOutput);
+        projectResult = JSON.parse(projectResponse);
       } catch {
         projectResult = {
           project_score: 0,
@@ -169,16 +162,11 @@ Respond in JSON:
 Be concise (under 5 sentences).
       `;
 
-      const finalResponse = await this.llm.invoke([
-        { role: 'user', content: finalPrompt },
-      ]);
-      const finalTextOutput = Array.isArray(finalResponse.content)
-        ? finalResponse.content.map((c: any) => c.text).join('\n')
-        : finalResponse.content;
+      const finalResponse = await this.llm.invoke(finalPrompt);
 
       let finalSummary;
       try {
-        finalSummary = JSON.parse(finalTextOutput);
+        finalSummary = JSON.parse(finalResponse);
       } catch {
         finalSummary = {
           overal_summary: 'Evaluation summary failed to parse.',

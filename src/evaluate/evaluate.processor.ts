@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { ChromaClient } from 'chromadb';
-import { PrismaService } from '../prisma/prisma.service';
-import { EvaluteResponse, JobRequestData } from '../../model/processor.model';
+import { JobRequestData } from '../model/processor.model';
 import { promises as fs } from 'fs';
-import { ProcessorEvaluteResponse } from '../../model/processor.model';
+import pdf from 'pdf-parse';
+import { PrismaService } from '../common/prisma/prisma.service';
 
 @Processor('evaluation')
 export class EvaluateProcessor extends WorkerHost {
@@ -101,10 +102,13 @@ Respond ONLY in strict JSON format:
       const cvResponse = await this.llm.invoke([
         { role: 'user', content: cvPrompt },
       ]);
+      const cvTextOutput = Array.isArray(cvResponse.content)
+        ? cvResponse.content.map((c: any) => c.text).join('\n')
+        : cvResponse.content;
 
       let cvResult;
       try {
-        cvResult = JSON.parse(cvResponse.content);
+        cvResult = JSON.parse(cvTextOutput);
       } catch {
         cvResult = {
           cv_match_rate: 0,
@@ -133,10 +137,13 @@ Respond ONLY in strict JSON format:
       const projectResponse = await this.llm.invoke([
         { role: 'user', content: projectPrompt },
       ]);
+      const projectTextOutput = Array.isArray(projectResponse.content)
+        ? projectResponse.content.map((c: any) => c.text).join('\n')
+        : projectResponse.content;
 
       let projectResult;
       try {
-        projectResult = JSON.parse(projectResponse.content);
+        projectResult = JSON.parse(projectTextOutput);
       } catch {
         projectResult = {
           project_score: 0,
@@ -165,17 +172,20 @@ Be concise (under 5 sentences).
       const finalResponse = await this.llm.invoke([
         { role: 'user', content: finalPrompt },
       ]);
+      const finalTextOutput = Array.isArray(finalResponse.content)
+        ? finalResponse.content.map((c: any) => c.text).join('\n')
+        : finalResponse.content;
 
       let finalSummary;
       try {
-        finalSummary = JSON.parse(finalResponse.content);
+        finalSummary = JSON.parse(finalTextOutput);
       } catch {
         finalSummary = {
           overal_summary: 'Evaluation summary failed to parse.',
         };
       }
 
-      const evaluationResult: ProcessorEvaluteResponse = {
+      const evaluationResult = {
         cv_match_rate: cvResult.cv_match_rate,
         cv_feedback: cvResult.cv_feedback,
         project_score: projectResult.project_score,

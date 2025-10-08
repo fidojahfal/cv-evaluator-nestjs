@@ -12,13 +12,6 @@ import { BullModule } from '@nestjs/bullmq';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    BullModule.registerQueue({
-      name: 'evaluation',
-      connection: {
-        host: process.env.REDIS_HOST,
-        port: +process.env.REDIS_PORT!,
-      },
-    }),
   ],
   providers: [
     PrismaService,

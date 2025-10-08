@@ -1,4 +1,5 @@
-import { OpenAIEmbeddings } from '@langchain/openai';
+import 'dotenv/config';
+import { HuggingFaceInferenceEmbeddings } from '@langchain/community/embeddings/hf';
 import { ChromaClient } from 'chromadb';
 import fs from 'fs/promises';
 import pdf from 'pdf-parse';
@@ -6,23 +7,24 @@ import pdf from 'pdf-parse';
 async function ingestDocs(): Promise<void> {
   const chromadb = new ChromaClient({
     host: process.env.CHROMA_DB_HOST,
-    port: +process.env.CHROMA_DB_PORT!,
+    port: Number(process.env.CHROMA_DB_PORT) || 8000,
   });
 
-  const embeddings = new OpenAIEmbeddings({
-    apiKey: process.env.OPEN_API_KEY,
+  const embeddings = new HuggingFaceInferenceEmbeddings({
+    apiKey: process.env.HF_API_KEY,
+    model: 'sentence-transformers/all-MiniLM-L6-v2',
   });
 
   const files = [
-    { name: 'job_description', path: '../../../docs/Job_Description.pdf' },
+    { name: 'job_description', path: 'docs/Job_Description.pdf' },
     {
       name: 'case_study_brief',
-      path: '../../../docs/Case_Study Brief.pdf.pdf',
+      path: 'docs/Case_Study_Brief.pdf',
     },
-    { name: 'scoring_rubric', path: '../../../docs/Scoring_Rubric.pdf.pdf' },
+    { name: 'scoring_rubric', path: 'docs/Scoring_Rubric.pdf' },
   ];
 
-  const collection = await chromadb.createCollection({
+  const collection = await chromadb.getOrCreateCollection({
     name: 'ground_truth_docs',
   });
 

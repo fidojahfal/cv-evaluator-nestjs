@@ -28,7 +28,7 @@ export class EvaluateService {
 
     const findDocument = await this.prismaService.file.findMany({
       where: {
-        AND: [
+        OR: [
           {
             AND: [{ id: evaluateRequest.cv_id }, { type: 'cv' }],
           },

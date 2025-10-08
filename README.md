@@ -23,76 +23,136 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+CV Evaluator using NestJS + LLM (Langchain + HuggingFace + Groq).
 
 ## Project setup
 
 ```bash
+# Install depedency
 $ npm install
-```
 
-## Compile and run the project
+# Copy file environment
+$ cp .env.example .env
 
-```bash
-# development
+# Run container Docker (PostgreSQL, Redis, Chroma)
+$ docker-compose up -d
+
+# Generate prisma client
+$ npx prisma generate
+
+# Run database migration
+$ prisma migrate dev
+
+# Run script for ingest document ground truth
+$ npx ts-node src/common/scripts/ingest-documents.ts
+
+# Run the application NestJS
+# Development
 $ npm run start
 
-# watch mode
-$ npm run start:dev
-
-# production mode
+# Production
+$ npm run build
 $ npm run start:prod
 ```
 
-## Run tests
+## API Endpoint
+
+### 1. Upload
+
+#### Endpoint
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+POST /upload
 ```
 
-## Deployment
+#### Request
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+#### Response
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+{
+    "cv": {
+        "id": 1,
+        "name": "1759940675889-720558134-CV.pdf"
+    },
+    "project_report": {
+        "id": 2,
+        "name": "1759940675891-179043711-Study Case Submission.pdf"
+    }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 2. Evaluate
 
-## Resources
+#### Endpoint
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+POST /evaluate
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+#### Request
 
-## Support
+```bash
+{
+    "cv_id": 7,
+    "project_report_id": 8,
+    "job_title": "Backend Engineer"
+}
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+#### Response
 
-## Stay in touch
+```bash
+{
+    "id": 1,
+    "status": "queued"
+}
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### 3. Result
 
-## License
+#### Endpoint
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+POST /result/:id
+```
+
+#### Request
+
+#### Response
+
+```bash
+# Queued
+{
+    "id": 1,
+    "status": "queued"
+}
+
+# Processing
+{
+    "id": 1,
+    "status": "queued"
+}
+
+# Error
+{
+    "id": 39,
+    "status": "completed",
+    "result": {
+        "error_message": "The error message show here"
+    }
+}
+
+# Complete
+{
+    "id": 39,
+    "status": "completed",
+    "result": {
+        "cv_feedback": "The candidate has a strong technical background and relevant experience in web development. Their projects demonstrate a good understanding of full-stack development and various technologies. However, the CV lacks specific details about their contributions to each project and could benefit from quantifiable achievements.",
+        "cv_match_rate": 0.75,
+        "project_score": 3.8,
+        "overall_summary": "The candidate shows promise for a backend engineer role with a solid technical background and relevant project experience. While their CV lacks specific project contributions and quantifiable achievements, their project demonstrates good understanding and implementation of key features.  Areas for improvement include code optimization, documentation, and providing more detailed project descriptions in their CV.",
+        "project_feedback": "The project demonstrates a good understanding of the requirements and implements the key features effectively. The code is well-structured and easy to understand. However, there is room for improvement in terms of code optimization and documentation."
+    }
+}
+```

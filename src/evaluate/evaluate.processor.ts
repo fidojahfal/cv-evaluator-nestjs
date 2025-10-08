@@ -15,7 +15,7 @@ export class EvaluateProcessor extends WorkerHost {
     port: +process.env.CHROMA_DB_PORT! || 8000,
   });
   private llm = new HuggingFaceInference({
-    model: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+    model: 'meta-llama/Llama-3-8B-Instruct',
     apiKey: process.env.HF_API_KEY,
     temperature: 0.3,
     maxTokens: 1024,
@@ -47,7 +47,7 @@ export class EvaluateProcessor extends WorkerHost {
       const projectText = (await pdf(await fs.readFile(project_report.path)))
         .text;
 
-      const chromaCollection = await this.chromadb.createCollection({
+      const chromaCollection = await this.chromadb.getOrCreateCollection({
         name: 'cv-evaluation',
       });
 

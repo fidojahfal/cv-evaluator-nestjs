@@ -16,7 +16,7 @@ export class EvaluateProcessor extends WorkerHost {
     port: +process.env.CHROMA_DB_PORT! || 8000,
   });
   private llm = new ChatGroq({
-    model: 'gemma2-9b-it',
+    model: 'openai/gpt-oss-20b',
     apiKey: process.env.GROQ_API_KEY,
     temperature: 0.3,
   });
